@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         Canvas Quiz Exporter (TXT)
 // @namespace    https://github.com/KaRuichin/Canvas-Quiz-Exporter
-// @version      1.1
+// @version      1.2
 // @description  Export Canvas LMS quiz questions and answers to a formatted TXT file
 // @author       KaRuichin
 // @match        https://canvas.newcastle.edu.au/courses/*/quizzes/*
 // @homepageURL  https://github.com/KaRuichin/Canvas-Quiz-Exporter
 // @supportURL   https://github.com/KaRuichin/Canvas-Quiz-Exporter/issues
+// @run-at       document-idle
 // @grant        none
 // ==/UserScript==
 
@@ -14,30 +15,54 @@
     'use strict';
 
     const PAGE_WIDTH = 80;
+    const BTN_ID = 'canvas-quiz-exporter-btn';
 
-    // 创建导出按钮
-    const btn = document.createElement('button');
-    btn.textContent = '📄 导出 TXT';
-    btn.style.cssText = `
-        position: fixed;
-        bottom: 30px;
-        right: 30px;
-        z-index: 99999;
-        padding: 10px 18px;
-        background: #0770A3;
-        color: white;
-        border: none;
-        border-radius: 6px;
-        font-size: 14px;
-        font-weight: bold;
-        cursor: pointer;
-        box-shadow: 0 3px 10px rgba(0,0,0,0.3);
-    `;
-    btn.addEventListener('mouseenter', () => btn.style.background = '#055a82');
-    btn.addEventListener('mouseleave', () => btn.style.background = '#0770A3');
-    document.body.appendChild(btn);
+    function insertButton() {
+        if (document.getElementById(BTN_ID)) return;
+        if (!document.querySelector('.display_question.question')) return;
 
-    btn.addEventListener('click', exportQuiz);
+        const btn = document.createElement('button');
+        btn.id = BTN_ID;
+        btn.textContent = '📄 导出 TXT';
+        btn.style.cssText = `
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 99999;
+            padding: 10px 18px;
+            background: #0770A3;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.3);
+        `;
+        btn.addEventListener('mouseenter', () => btn.style.background = '#055a82');
+        btn.addEventListener('mouseleave', () => btn.style.background = '#0770A3');
+        btn.addEventListener('click', exportQuiz);
+        document.body.appendChild(btn);
+    }
+
+    // 初始插入
+    insertButton();
+
+    // 监控 body 直接子节点变化，按钮被移除时自动重新插入
+    new MutationObserver(() => {
+        if (!document.getElementById(BTN_ID)) {
+            insertButton();
+        }
+    }).observe(document.body, { childList: true });
+
+    // 处理 Canvas SPA 导航：监听 URL 变化
+    let lastUrl = location.href;
+    new MutationObserver(() => {
+        if (location.href !== lastUrl) {
+            lastUrl = location.href;
+            setTimeout(insertButton, 1500);
+        }
+    }).observe(document, { subtree: true, childList: true });
 
     function exportQuiz() {
         const rawTitle = document.title || '';
@@ -81,13 +106,12 @@
                     correctLetters.push(letter);
                 }
 
-                // 前缀：e.g. "   A. "（共6字符）
                 const prefix = `   ${letter}. `;
                 const indent = ' '.repeat(prefix.length);
                 const wrapped = wrapText(
                     ansText,
-                    PAGE_WIDTH - prefix.length,  // 第一行可用宽度
-                    PAGE_WIDTH - indent.length,   // 续行可用宽度
+                    PAGE_WIDTH - prefix.length,
+                    PAGE_WIDTH - indent.length,
                     indent
                 );
                 answerLines.push(prefix + wrapped);
@@ -102,9 +126,8 @@
                 answerLabel = `[${correctLetters.join('')}(多选)]`;
             }
 
-            // 题目前缀：e.g. "1. [D] "
             const qPrefix = `${qIdx + 1}. ${answerLabel} `;
-            const qIndent = ' '.repeat(3); // 续行缩进3个空格
+            const qIndent = '   ';
             const wrappedQuestion = wrapText(
                 questionText,
                 PAGE_WIDTH - qPrefix.length,
@@ -129,20 +152,10 @@
             .replace(/\t/g, ' ')
             .replace(/\r\n/g, '\n')
             .replace(/\r/g, '\n')
-            // 收缩3个以上连续空行为最多2个，保留段落间的单次换行
-            。replace(/\n{3,}/g, '\n\n')
+            .replace(/\n{3,}/g, '\n\n')
             .trim();
     }
 
-    /**
-     * 对文本进行自动换行，同时保留原文本中真实存在的换行符。
-     *
-     * @param {string} text            - 待处理的纯文本
-     * @param {number} firstLineWidth  - 第一行可用字符宽度（已扣除前缀长度）
-     * @param {number} contWidth       - 续行可用字符宽度（已扣除缩进长度）
-     * @param {string} contIndent      - 续行前缀缩进字符串
-     * @returns {string}
-     */
     function wrapText(text, firstLineWidth, contWidth, contIndent) {
         const paragraphs = text.split('\n');
         const resultLines = [];
@@ -151,7 +164,6 @@
         paragraphs.forEach(para => {
             const trimmed = para.trim();
 
-            // 空行：保留为真实段落分隔
             if (!trimmed) {
                 resultLines.push('');
                 isFirstLine = false;
