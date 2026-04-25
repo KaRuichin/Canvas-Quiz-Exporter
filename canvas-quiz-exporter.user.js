@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Canvas Quiz Exporter (TXT)
 // @namespace    https://github.com/KaRuichin/Canvas-Quiz-Exporter
-// @version      1.2
+// @version      1.3
 // @description  Export Canvas LMS quiz questions and answers to a formatted TXT file
 // @author       KaRuichin
 // @match        https://canvas.newcastle.edu.au/courses/*/quizzes/*
@@ -45,17 +45,12 @@
         document.body.appendChild(btn);
     }
 
-    // 初始插入
     insertButton();
 
-    // 监控 body 直接子节点变化，按钮被移除时自动重新插入
     new MutationObserver(() => {
-        if (!document.getElementById(BTN_ID)) {
-            insertButton();
-        }
+        if (!document.getElementById(BTN_ID)) insertButton();
     }).observe(document.body, { childList: true });
 
-    // 处理 Canvas SPA 导航：监听 URL 变化
     let lastUrl = location.href;
     new MutationObserver(() => {
         if (location.href !== lastUrl) {
@@ -85,7 +80,7 @@
         questions.forEach((q, qIdx) => {
             const questionTextElem = q.querySelector('.question_text');
             const questionText = questionTextElem
-                ? cleanText(questionTextElem.innerText)
+                ? getPlainText(questionTextElem)
                 : `(Question ${qIdx + 1})`;
 
             const answerElems = q.querySelectorAll('.answer');
@@ -95,25 +90,17 @@
             answerElems.forEach((a, ai) => {
                 const letter = LETTERS[ai] || String(ai + 1);
                 const textElem = a.querySelector('.answer_text, .answer_html');
-                let ansText = textElem ? cleanText(textElem.innerText) : '';
+                const ansText = textElem ? getPlainText(textElem) : '';
                 if (!ansText) return;
 
                 const cls = a.className;
-                const isSelected = cls.includes('selected_answer');
-                const isCorrect = cls.includes('correct_answer');
-
-                if (isCorrect || isSelected) {
+                if (cls.includes('correct_answer') || cls.includes('selected_answer')) {
                     correctLetters.push(letter);
                 }
 
                 const prefix = `   ${letter}. `;
                 const indent = ' '.repeat(prefix.length);
-                const wrapped = wrapText(
-                    ansText,
-                    PAGE_WIDTH - prefix.length,
-                    PAGE_WIDTH - indent.length,
-                    indent
-                );
+                const wrapped = wrapText(ansText, PAGE_WIDTH - prefix.length, PAGE_WIDTH - indent.length, indent);
                 answerLines.push(prefix + wrapped);
             });
 
@@ -128,12 +115,7 @@
 
             const qPrefix = `${qIdx + 1}. ${answerLabel} `;
             const qIndent = '   ';
-            const wrappedQuestion = wrapText(
-                questionText,
-                PAGE_WIDTH - qPrefix.length,
-                PAGE_WIDTH - qIndent.length,
-                qIndent
-            );
+            const wrappedQuestion = wrapText(questionText, PAGE_WIDTH - qPrefix.length, PAGE_WIDTH - qIndent.length, qIndent);
 
             lines.push(qPrefix + wrappedQuestion);
             lines.push('');
@@ -146,10 +128,20 @@
         downloadTxt(content, filename);
     }
 
-    function cleanText(text) {
-        if (!text) return '';
-        return text
-            .replace(/\t/g, ' ')
+    /**
+     * 从 DOM 元素提取纯文本，使用 innerHTML→textContent 方式，
+     * 不受浏览器窗口宽度和 CSS 渲染影响。
+     * 保留 <br>、<p>、<li> 等产生的真实语义换行。
+     */
+    function getPlainText(element) {
+        const clone = element.cloneNode(true);
+        // <br> 转换为换行
+        clone.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+        // 块级元素后插入换行，保留段落结构
+        clone.querySelectorAll('p, div, li, h1, h2, h3, h4').forEach(el => {
+            el.insertAdjacentText('afterend', '\n');
+        });
+        return clone.textContent
             .replace(/\r\n/g, '\n')
             .replace(/\r/g, '\n')
             .replace(/\n{3,}/g, '\n\n')
@@ -163,20 +155,16 @@
 
         paragraphs.forEach(para => {
             const trimmed = para.trim();
-
             if (!trimmed) {
                 resultLines.push('');
                 isFirstLine = false;
                 return;
             }
-
             const words = trimmed.split(' ');
             let currentLine = '';
-
             words.forEach(word => {
                 if (!word) return;
                 const maxW = isFirstLine ? firstLineWidth : contWidth;
-
                 if (currentLine === '') {
                     currentLine = word;
                 } else if ((currentLine + ' ' + word).length <= maxW) {
@@ -187,7 +175,6 @@
                     currentLine = word;
                 }
             });
-
             if (currentLine) {
                 resultLines.push(isFirstLine ? currentLine : contIndent + currentLine);
                 isFirstLine = false;
