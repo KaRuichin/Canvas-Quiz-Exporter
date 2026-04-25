@@ -1,10 +1,12 @@
 // ==UserScript==
 // @name         Canvas Quiz Exporter (TXT)
-// @namespace    https://canvas.newcastle.edu.au/
+// @namespace    https://github.com/KaRuichin/Canvas-Quiz-Exporter
 // @version      1.0
-// @description  Export Canvas Quiz questions and answers to TXT format
-// @author       You
+// @description  Export Canvas LMS quiz questions and answers to a formatted TXT file
+// @author       KaRuichin
 // @match        https://canvas.newcastle.edu.au/courses/*/quizzes/*
+// @homepageURL  https://github.com/KaRuichin/Canvas-Quiz-Exporter
+// @supportURL   https://github.com/KaRuichin/Canvas-Quiz-Exporter/issues
 // @grant        none
 // ==/UserScript==
 
