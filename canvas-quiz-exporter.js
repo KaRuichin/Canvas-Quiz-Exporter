@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Canvas Quiz Exporter (TXT)
 // @namespace    https://github.com/KaRuichin/Canvas-Quiz-Exporter
-// @version      1.0
+// @version      1.1
 // @description  Export Canvas LMS quiz questions and answers to a formatted TXT file
 // @author       KaRuichin
 // @match        https://canvas.newcastle.edu.au/courses/*/quizzes/*
@@ -12,6 +12,8 @@
 
 (function () {
     'use strict';
+
+    const PAGE_WIDTH = 80;
 
     // 创建导出按钮
     const btn = document.createElement('button');
@@ -38,9 +40,7 @@
     btn.addEventListener('click', exportQuiz);
 
     function exportQuiz() {
-        // 获取 Quiz 标题
         const rawTitle = document.title || '';
-        // 提取 "Week X Quiz" 部分
         const titleMatch = rawTitle.match(/(Week\s+\d+\s+Quiz[^:]*)/i);
         const quizTitle = titleMatch ? titleMatch[1].trim() : rawTitle.split(':')[0].trim();
 
@@ -58,17 +58,11 @@
         const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
         questions.forEach((q, qIdx) => {
-            // 获取题目文本
             const questionTextElem = q.querySelector('.question_text');
             const questionText = questionTextElem
                 ? cleanText(questionTextElem.innerText)
                 : `(Question ${qIdx + 1})`;
 
-            // 判断题型
-            const isMultiple = q.classList.contains('multiple_answers_question');
-            const isMultipleChoice = q.classList.contains('multiple_choice_question');
-
-            // 获取答案
             const answerElems = q.querySelectorAll('.answer');
             const correctLetters = [];
             const answerLines = [];
@@ -83,37 +77,47 @@
                 const isSelected = cls.includes('selected_answer');
                 const isCorrect = cls.includes('correct_answer');
 
-                // 判断是否为正确答案
-                const markAsCorrect = isCorrect || isSelected;
-                if (markAsCorrect) {
+                if (isCorrect || isSelected) {
                     correctLetters.push(letter);
                 }
 
-                // 格式化选项文本（处理换行和长文本）
-                const wrappedAnswer = wrapText(ansText, 66, '      ');
-                answerLines.push(`   ${letter}. ${wrappedAnswer}`);
+                // 前缀：e.g. "   A. "（共6字符）
+                const prefix = `   ${letter}. `;
+                const indent = ' '.repeat(prefix.length);
+                const wrapped = wrapText(
+                    ansText,
+                    PAGE_WIDTH - prefix.length,  // 第一行可用宽度
+                    PAGE_WIDTH - indent.length,   // 续行可用宽度
+                    indent
+                );
+                answerLines.push(prefix + wrapped);
             });
 
-            // 生成答案标注
             let answerLabel;
             if (correctLetters.length === 0) {
-                answerLabel = '[?]'; // 无法确定正确答案
+                answerLabel = '[?]';
             } else if (correctLetters.length === 1) {
                 answerLabel = `[${correctLetters[0]}]`;
             } else {
                 answerLabel = `[${correctLetters.join('')}(多选)]`;
             }
 
-            // 格式化题目文本（处理换行）
-            const wrappedQuestion = wrapText(questionText, 70, '   ');
+            // 题目前缀：e.g. "1. [D] "
+            const qPrefix = `${qIdx + 1}. ${answerLabel} `;
+            const qIndent = ' '.repeat(3); // 续行缩进3个空格
+            const wrappedQuestion = wrapText(
+                questionText,
+                PAGE_WIDTH - qPrefix.length,
+                PAGE_WIDTH - qIndent.length,
+                qIndent
+            );
 
-            lines.push(`${qIdx + 1}. ${answerLabel} ${wrappedQuestion}`);
+            lines.push(qPrefix + wrappedQuestion);
             lines.push('');
             answerLines.forEach(l => lines.push(l));
             lines.push('');
         });
 
-        // 下载文件
         const content = lines.join('\n');
         const filename = `${quizTitle.replace(/[\\/:*?"<>|]/g, '_')}.txt`;
         downloadTxt(content, filename);
@@ -125,47 +129,56 @@
             .replace(/\t/g, ' ')
             .replace(/\r\n/g, '\n')
             .replace(/\r/g, '\n')
-            .replace(/\n{3,}/g, '\n\n')
+            // 收缩3个以上连续空行为最多2个，保留段落间的单次换行
+            。replace(/\n{3,}/g, '\n\n')
             .trim();
     }
 
-    function wrapText(text, maxWidth, indent) {
-        // 按换行符分割，再对每行进行宽度包装
+    /**
+     * 对文本进行自动换行，同时保留原文本中真实存在的换行符。
+     *
+     * @param {string} text            - 待处理的纯文本
+     * @param {number} firstLineWidth  - 第一行可用字符宽度（已扣除前缀长度）
+     * @param {number} contWidth       - 续行可用字符宽度（已扣除缩进长度）
+     * @param {string} contIndent      - 续行前缀缩进字符串
+     * @returns {string}
+     */
+    function wrapText(text, firstLineWidth, contWidth, contIndent) {
         const paragraphs = text.split('\n');
         const resultLines = [];
-        let isFirst = true;
+        let isFirstLine = true;
 
         paragraphs.forEach(para => {
-            para = para.trim();
-            if (!para) return;
+            const trimmed = para.trim();
 
-            const words = para.split(' ');
+            // 空行：保留为真实段落分隔
+            if (!trimmed) {
+                resultLines.push('');
+                isFirstLine = false;
+                return;
+            }
+
+            const words = trimmed.split(' ');
             let currentLine = '';
 
             words.forEach(word => {
                 if (!word) return;
+                const maxW = isFirstLine ? firstLineWidth : contWidth;
+
                 if (currentLine === '') {
                     currentLine = word;
-                } else if ((currentLine + ' ' + word).length <= maxWidth) {
+                } else if ((currentLine + ' ' + word).length <= maxW) {
                     currentLine += ' ' + word;
                 } else {
-                    if (isFirst) {
-                        resultLines.push(currentLine);
-                        isFirst = false;
-                    } else {
-                        resultLines.push(indent + currentLine);
-                    }
+                    resultLines.push(isFirstLine ? currentLine : contIndent + currentLine);
+                    isFirstLine = false;
                     currentLine = word;
                 }
             });
 
             if (currentLine) {
-                if (isFirst) {
-                    resultLines.push(currentLine);
-                    isFirst = false;
-                } else {
-                    resultLines.push(indent + currentLine);
-                }
+                resultLines.push(isFirstLine ? currentLine : contIndent + currentLine);
+                isFirstLine = false;
             }
         });
 
