@@ -26,3 +26,4 @@ Week 1 - Introduction to Applied AI
       to cover all of them
    E. There are more classes than in the example with black and white points
 ```
+<img width="1883" height="1389" alt="Snipaste_2026-04-25_10-45-06" src="https://github.com/user-attachments/assets/d77d96a4-fba1-4ca8-8436-9985cf32a409" />
